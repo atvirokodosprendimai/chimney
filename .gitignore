@@ -1,0 +1,12 @@
+# Binaries
+chimney
+chimney-*
+*.exe
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
