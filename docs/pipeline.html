@@ -393,12 +393,24 @@ a:hover { text-decoration: underline; }
       COLUMN_LABELS[col] + ': ' + count + suffix);
   }
 
-  function renderAlertZone(staleIssues) {
+  function renderAlertZone(staleIssues, totalPipelineIssues) {
     var zone = document.getElementById('alert-zone');
     while (zone.firstChild) { zone.removeChild(zone.firstChild); }
 
     if (staleIssues.length === 0) {
-      zone.classList.remove('visible');
+      if (totalPipelineIssues > 0) {
+        // All-healthy indicator (PRD Feature 9, criterion 2)
+        var healthyBadge = el('span', {
+          className: 'alert-badge',
+          textContent: '\uD83D\uDFE2 All issues flowing — pipeline healthy'
+        });
+        healthyBadge.style.background = 'rgba(63,185,80,0.1)';
+        healthyBadge.style.color = 'var(--green)';
+        zone.appendChild(healthyBadge);
+        zone.classList.add('visible');
+      } else {
+        zone.classList.remove('visible');
+      }
       return;
     }
 
@@ -451,19 +463,16 @@ a:hover { text-decoration: underline; }
     }
 
     var healEl = document.getElementById('heal-info');
-    if (healthState) {
-      var parts = [];
-      if (healthState.last_check) {
-        parts.push('Last healed: ' + relativeTime(healthState.last_check));
-      }
+    if (healthState && healthState.last_check) {
+      var parts = ['Last healed: ' + relativeTime(healthState.last_check)];
       if (healthState.last_run_summary && healthState.last_run_summary.actions_taken != null) {
         parts.push('fixed ' + healthState.last_run_summary.actions_taken + ' issues');
       } else if (healthState.issues_healed_total != null) {
         parts.push(healthState.issues_healed_total + ' total healed');
       }
-      if (parts.length > 0) {
-        healEl.textContent = parts.join(', ');
-      }
+      healEl.textContent = parts.join(', ');
+    } else {
+      healEl.textContent = 'Self-healing: not yet active';
     }
   }
 
@@ -598,7 +607,7 @@ a:hover { text-decoration: underline; }
 
       // Alert zone
       staleIssues.sort(function(a, b) { return ageHours(b.created_at) - ageHours(a.created_at); });
-      renderAlertZone(staleIssues);
+      renderAlertZone(staleIssues, totalPipelineIssues);
 
       // Banner
       updateBanner(loopState, costs, healthState);
