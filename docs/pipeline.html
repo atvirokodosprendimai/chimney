@@ -7,8 +7,8 @@
 <style>
 :root {
   --bg: #0d1117; --surface: #161b22; --border: #30363d;
-  --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
-  --green: #3fb950; --red: #f85149; --yellow: #d29922; --purple: #bc8cff;
+  --text: #e6edf3; --muted: #9eaab6; --accent: #58a6ff;
+  --green: #3fb950; --red: #f85149; --yellow: #e5b535; --purple: #bc8cff;
   --orange: #f0883e;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -64,7 +64,7 @@ a:hover { text-decoration: underline; }
   cursor: pointer; text-decoration: none;
 }
 .alert-badge.red { background: rgba(248,81,73,0.15); color: var(--red); }
-.alert-badge.yellow { background: rgba(210,153,34,0.15); color: var(--yellow); }
+.alert-badge.yellow { background: rgba(229,181,53,0.15); color: var(--yellow); }
 
 /* ── Kanban ── */
 .kanban {
@@ -142,19 +142,37 @@ a:hover { text-decoration: underline; }
   display: none; justify-content: center; gap: 0.5rem; padding: 0.5rem;
 }
 .dot {
-  width: 8px; height: 8px; border-radius: 50%; border: none; padding: 0;
-  background: var(--border); transition: background 0.2s; cursor: pointer;
+  min-width: 48px; min-height: 48px; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: none; padding: 0;
+  background: transparent; cursor: pointer; position: relative;
 }
-.dot.active { background: var(--accent); }
+.dot::after {
+  content: ''; display: block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--border); transition: background 0.2s;
+}
+.dot.active::after { background: var(--accent); }
+.dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── Screen reader only ── */
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
+.sr-only:focus {
+  width: auto; height: auto; padding: 0.5rem; margin: 0;
+  overflow: visible; clip: auto; white-space: normal;
+}
+/* ── Pause/resume button ── */
+.btn-pause {
+  background: none; border: 1px solid var(--border); border-radius: 4px;
+  color: var(--muted); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 0.6875rem;
+  font-family: inherit;
+}
+.btn-pause:hover { border-color: var(--accent); color: var(--accent); }
 </style>
 </head>
 <body>
+<a href="#kanban" class="sr-only" style="position:absolute;z-index:100;padding:0.5rem;background:var(--bg);color:var(--accent)">Skip to pipeline board</a>
 
 <nav class="topnav">
   <a href="/">&larr; Dashboard</a>
@@ -171,6 +189,7 @@ a:hover { text-decoration: underline; }
   <div class="banner-right">
     <span id="refresh-age">Data refreshed --</span>
     <button class="btn-refresh" id="btn-refresh" aria-label="Refresh data">&#x21bb; Refresh</button>
+    <button class="btn-pause" id="btn-pause" aria-label="Pause auto-refresh">&#x23F8; Pause</button>
   </div>
 </div>
 
@@ -199,13 +218,13 @@ a:hover { text-decoration: underline; }
   </div>
 </div>
 
-<div class="carousel-dots" id="carousel-dots" role="tablist" aria-label="Pipeline columns">
-  <button class="dot active" data-col="0" role="tab" aria-selected="true" aria-label="Created column"></button>
-  <button class="dot" data-col="1" role="tab" aria-selected="false" aria-label="Triaging column"></button>
-  <button class="dot" data-col="2" role="tab" aria-selected="false" aria-label="Spec PR column"></button>
-  <button class="dot" data-col="3" role="tab" aria-selected="false" aria-label="Approved column"></button>
-  <button class="dot" data-col="4" role="tab" aria-selected="false" aria-label="Implementing column"></button>
-  <button class="dot" data-col="5" role="tab" aria-selected="false" aria-label="Merged column"></button>
+<div class="carousel-dots" id="carousel-dots" role="group" aria-label="Pipeline columns">
+  <button class="dot active" data-col="0" role="button" aria-pressed="true" aria-label="Created column"></button>
+  <button class="dot" data-col="1" role="button" aria-pressed="false" aria-label="Triaging column"></button>
+  <button class="dot" data-col="2" role="button" aria-pressed="false" aria-label="Spec PR column"></button>
+  <button class="dot" data-col="3" role="button" aria-pressed="false" aria-label="Approved column"></button>
+  <button class="dot" data-col="4" role="button" aria-pressed="false" aria-label="Implementing column"></button>
+  <button class="dot" data-col="5" role="button" aria-pressed="false" aria-label="Merged column"></button>
 </div>
 
 <script>
@@ -416,14 +435,18 @@ a:hover { text-decoration: underline; }
 
     staleIssues.forEach(function(item) {
       var hours = ageHours(item.created_at);
+      var roundedHours = Math.round(hours);
       var isRed = hours > STALE_HOURS_RED;
+      var severity = isRed ? 'critical' : 'warning';
+      var emojiSpan = el('span', { 'aria-hidden': 'true', textContent: isRed ? '\uD83D\uDD34' : '\uD83D\uDFE1' });
+      var textSpan = el('span', { textContent: ' #' + item.number + ' (' + roundedHours + 'h)' });
       var badge = el('a', {
         className: 'alert-badge ' + (isRed ? 'red' : 'yellow'),
         href: item.html_url,
         target: '_blank',
         rel: 'noopener noreferrer',
-        textContent: (isRed ? '\uD83D\uDD34' : '\uD83D\uDFE1') + ' #' + item.number + ' (' + Math.round(hours) + 'h)'
-      });
+        'aria-label': 'Issue #' + item.number + ' stale for ' + roundedHours + ' hours, ' + severity
+      }, [emojiSpan, textSpan]);
       zone.appendChild(badge);
     });
     zone.classList.add('visible');
@@ -657,17 +680,57 @@ a:hover { text-decoration: underline; }
       dots.forEach(function(d, i) {
         var isActive = i === index;
         d.classList.toggle('active', isActive);
-        d.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        d.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       });
     });
+
+    function scrollToCol(idx) {
+      var firstCol = kanban.querySelector('.kanban-col');
+      if (!firstCol) return;
+      kanban.scrollTo({ left: idx * firstCol.offsetWidth, behavior: 'smooth' });
+    }
 
     dots.forEach(function(d) {
       d.addEventListener('click', function() {
         var idx = parseInt(d.getAttribute('data-col'), 10);
-        var firstCol = kanban.querySelector('.kanban-col');
-        if (!firstCol) return;
-        kanban.scrollTo({ left: idx * firstCol.offsetWidth, behavior: 'smooth' });
+        scrollToCol(idx);
       });
+
+      d.addEventListener('keydown', function(e) {
+        var idx = parseInt(d.getAttribute('data-col'), 10);
+        var next = -1;
+        if (e.key === 'ArrowRight' || e.key === 'Right') {
+          next = (idx + 1) % dots.length;
+        } else if (e.key === 'ArrowLeft' || e.key === 'Left') {
+          next = (idx - 1 + dots.length) % dots.length;
+        }
+        if (next >= 0) {
+          e.preventDefault();
+          dots[next].focus();
+          scrollToCol(next);
+        }
+      });
+    });
+  }
+
+  // ── Pause / Resume auto-refresh (C4) ──
+
+  var autoRefreshPaused = false;
+
+  function setupPauseButton() {
+    var btn = document.getElementById('btn-pause');
+    btn.addEventListener('click', function() {
+      if (autoRefreshPaused) {
+        autoRefreshPaused = false;
+        scheduleRefresh();
+        btn.textContent = '\u23F8 Pause';
+        btn.setAttribute('aria-label', 'Pause auto-refresh');
+      } else {
+        autoRefreshPaused = true;
+        if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+        btn.textContent = '\u25B6 Resume';
+        btn.setAttribute('aria-label', 'Resume auto-refresh');
+      }
     });
   }
 
@@ -676,6 +739,7 @@ a:hover { text-decoration: underline; }
   document.getElementById('btn-refresh').addEventListener('click', fetchAll);
   ageTimer = setInterval(updateRefreshAge, 1000);
   setupCarousel();
+  setupPauseButton();
   fetchAll();
   scheduleRefresh();
 
