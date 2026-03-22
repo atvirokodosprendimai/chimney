@@ -142,8 +142,8 @@ a:hover { text-decoration: underline; }
   display: none; justify-content: center; gap: 0.5rem; padding: 0.5rem;
 }
 .dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--border); transition: background 0.2s;
+  width: 8px; height: 8px; border-radius: 50%; border: none; padding: 0;
+  background: var(--border); transition: background 0.2s; cursor: pointer;
 }
 .dot.active { background: var(--accent); }
 
@@ -174,7 +174,7 @@ a:hover { text-decoration: underline; }
   </div>
 </div>
 
-<div class="alert-zone" id="alert-zone" role="alert" aria-live="polite"></div>
+<div class="alert-zone" id="alert-zone" role="status" aria-live="polite"></div>
 
 <div id="error-banner" class="error-banner" role="alert"></div>
 
@@ -199,13 +199,13 @@ a:hover { text-decoration: underline; }
   </div>
 </div>
 
-<div class="carousel-dots" id="carousel-dots">
-  <div class="dot active" data-col="0"></div>
-  <div class="dot" data-col="1"></div>
-  <div class="dot" data-col="2"></div>
-  <div class="dot" data-col="3"></div>
-  <div class="dot" data-col="4"></div>
-  <div class="dot" data-col="5"></div>
+<div class="carousel-dots" id="carousel-dots" role="tablist" aria-label="Pipeline columns">
+  <button class="dot active" data-col="0" role="tab" aria-selected="true" aria-label="Created column"></button>
+  <button class="dot" data-col="1" role="tab" aria-selected="false" aria-label="Triaging column"></button>
+  <button class="dot" data-col="2" role="tab" aria-selected="false" aria-label="Spec PR column"></button>
+  <button class="dot" data-col="3" role="tab" aria-selected="false" aria-label="Approved column"></button>
+  <button class="dot" data-col="4" role="tab" aria-selected="false" aria-label="Implementing column"></button>
+  <button class="dot" data-col="5" role="tab" aria-selected="false" aria-label="Merged column"></button>
 </div>
 
 <script>
@@ -236,6 +236,7 @@ a:hover { text-decoration: underline; }
   var lastFetchTime = null;
   var refreshTimer = null;
   var ageTimer = null;
+  var fetchInFlight = false;
 
   // ── Helpers ──
 
@@ -345,7 +346,7 @@ a:hover { text-decoration: underline; }
       className: 'card-number',
       href: issue.html_url,
       target: '_blank',
-      rel: 'noopener',
+      rel: 'noopener noreferrer',
       textContent: '#' + issue.number
     });
 
@@ -408,7 +409,7 @@ a:hover { text-decoration: underline; }
         className: 'alert-badge ' + (isRed ? 'red' : 'yellow'),
         href: item.html_url,
         target: '_blank',
-        rel: 'noopener',
+        rel: 'noopener noreferrer',
         textContent: (isRed ? '\uD83D\uDD34' : '\uD83D\uDFE1') + ' #' + item.number + ' (' + Math.round(hours) + 'h)'
       });
       zone.appendChild(badge);
@@ -481,12 +482,15 @@ a:hover { text-decoration: underline; }
   // ── Main data fetch ──
 
   function fetchAll() {
+    if (fetchInFlight) return;
+    fetchInFlight = true;
+
     var btn = document.getElementById('btn-refresh');
     btn.classList.add('refreshing');
     btn.disabled = true;
 
-    var issuesP = fetchJSON('/issues?state=open&per_page=100').catch(function() { return null; });
-    var pullsP = fetchJSON('/pulls?state=closed&per_page=10&sort=updated&direction=desc').catch(function() { return null; });
+    var issuesP = fetchJSON('/' + PIPELINE_REPO + '/issues?state=open&per_page=100').catch(function() { return null; });
+    var pullsP = fetchJSON('/' + PIPELINE_REPO + '/pulls?state=closed&per_page=10&sort=updated&direction=desc').catch(function() { return null; });
     var loopP = fetchRepoContent('company/loop-state.json').catch(function() { return null; });
     var costsP = fetchRepoContent('company/costs.json').catch(function() { return null; });
     var healthP = fetchRepoContent('company/pipeline-health-state.json').catch(function() { return null; });
@@ -504,6 +508,7 @@ a:hover { text-decoration: underline; }
         showError('Failed to fetch pipeline data. Showing last known state.');
         btn.classList.remove('refreshing');
         btn.disabled = false;
+        fetchInFlight = false;
         return;
       }
 
@@ -597,10 +602,12 @@ a:hover { text-decoration: underline; }
 
       btn.classList.remove('refreshing');
       btn.disabled = false;
+      fetchInFlight = false;
     }).catch(function(err) {
       showError('Error loading pipeline data: ' + err.message);
       btn.classList.remove('refreshing');
       btn.disabled = false;
+      fetchInFlight = false;
     });
   }
 
@@ -627,7 +634,9 @@ a:hover { text-decoration: underline; }
       var colWidth = firstCol.offsetWidth;
       var index = Math.round(kanban.scrollLeft / colWidth);
       dots.forEach(function(d, i) {
-        d.classList.toggle('active', i === index);
+        var isActive = i === index;
+        d.classList.toggle('active', isActive);
+        d.setAttribute('aria-selected', isActive ? 'true' : 'false');
       });
     });
 
