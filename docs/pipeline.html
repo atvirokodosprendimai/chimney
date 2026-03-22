@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline Kanban — wgmesh</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+  --green: #3fb950; --red: #f85149; --yellow: #d29922; --purple: #bc8cff;
+  --orange: #f0883e;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.5;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Top nav ── */
+.topnav {
+  display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border); font-size: 0.8125rem;
+}
+.topnav a { color: var(--muted); }
+.topnav a:hover { color: var(--accent); }
+
+/* ── Banner ── */
+.banner {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 0.5rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
+  background: var(--surface); font-size: 0.8125rem;
+}
+.banner-left { display: flex; align-items: center; gap: 0.75rem; }
+.banner-center { color: var(--muted); }
+.banner-right { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); font-size: 0.75rem; }
+.pill {
+  display: inline-block; padding: 0.125rem 0.625rem; border-radius: 999px;
+  font-size: 0.75rem; font-weight: 600;
+  background: rgba(88,166,255,0.15); color: var(--accent);
+}
+.runway { color: var(--muted); }
+.btn-refresh {
+  background: none; border: 1px solid var(--border); border-radius: 4px;
+  color: var(--muted); cursor: pointer; padding: 0.25rem 0.5rem; font-size: 0.6875rem;
+  font-family: inherit;
+}
+.btn-refresh:hover { border-color: var(--accent); color: var(--accent); }
+.refreshing { opacity: 0.5; }
+
+/* ── Alert zone ── */
+.alert-zone {
+  overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease;
+  border-bottom: 1px solid var(--border); padding: 0 1rem;
+  display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+  max-height: 0;
+}
+.alert-zone.visible { max-height: 200px; padding: 0.5rem 1rem; }
+.alert-badge {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  padding: 0.25rem 0.625rem; border-radius: 4px; font-size: 0.75rem; font-weight: 500;
+  cursor: pointer; text-decoration: none;
+}
+.alert-badge.red { background: rgba(248,81,73,0.15); color: var(--red); }
+.alert-badge.yellow { background: rgba(210,153,34,0.15); color: var(--yellow); }
+
+/* ── Kanban ── */
+.kanban {
+  display: grid; grid-template-columns: repeat(6, 1fr);
+  gap: 0; min-height: calc(100vh - 160px);
+}
+.kanban-col {
+  border-right: 1px solid var(--border); padding: 0.75rem;
+  display: flex; flex-direction: column; gap: 0.5rem;
+}
+.kanban-col:last-child { border-right: none; }
+.col-header {
+  font-size: 0.75rem; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+  margin-bottom: 0.25rem;
+}
+.col-count {
+  font-weight: 400; opacity: 0.7;
+}
+
+/* ── Issue cards ── */
+.issue-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.625rem 0.75rem; border-left: 3px solid var(--green);
+  transition: border-color 0.2s;
+}
+.issue-card:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.issue-card.health-yellow { border-left-color: var(--yellow); }
+.issue-card.health-red { border-left-color: var(--red); }
+.issue-card.merged { border-left-color: var(--purple); }
+.card-number {
+  font-size: 0.75rem; font-weight: 600; color: var(--accent);
+}
+.card-title {
+  font-size: 0.8125rem; margin-top: 0.125rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.card-meta {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.6875rem; color: var(--muted); margin-top: 0.375rem;
+}
+.health-dot { font-size: 0.75rem; }
+
+/* ── Empty / error states ── */
+.empty-state {
+  color: var(--muted); font-style: italic; font-size: 0.8125rem;
+  text-align: center; padding: 2rem 0.5rem;
+}
+.error-banner {
+  background: rgba(248,81,73,0.1); border: 1px solid var(--red); border-radius: 4px;
+  color: var(--red); padding: 0.5rem 1rem; margin: 0.5rem 1rem; font-size: 0.8125rem;
+  display: none;
+}
+.error-banner.visible { display: block; }
+
+/* ── Mobile (<480px) ── */
+@media (max-width: 480px) {
+  .banner { font-size: 0.75rem; justify-content: center; text-align: center; }
+  .banner-left, .banner-center, .banner-right { width: 100%; justify-content: center; }
+  .kanban {
+    display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  .kanban-col {
+    min-width: 85vw; scroll-snap-align: start; flex-shrink: 0;
+    border-right: 1px solid var(--border);
+  }
+  .issue-card { min-height: 48px; }
+  .carousel-dots { display: flex !important; }
+}
+
+/* Carousel dots (mobile only) */
+.carousel-dots {
+  display: none; justify-content: center; gap: 0.5rem; padding: 0.5rem;
+}
+.dot {
+  width: 8px; height: 8px; border-radius: 50%; border: none; padding: 0;
+  background: var(--border); transition: background 0.2s; cursor: pointer;
+}
+.dot.active { background: var(--accent); }
+
+/* ── Screen reader only ── */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <a href="/">&larr; Dashboard</a>
+  <span style="color:var(--border)">|</span>
+  <span style="color:var(--text);font-weight:600">Pipeline Kanban</span>
+</nav>
+
+<div class="banner" role="banner">
+  <div class="banner-left">
+    <span class="pill" id="stage-pill">--</span>
+    <span class="runway" id="runway-text">-- runway</span>
+  </div>
+  <div class="banner-center" id="heal-info">Last healed: --</div>
+  <div class="banner-right">
+    <span id="refresh-age">Data refreshed --</span>
+    <button class="btn-refresh" id="btn-refresh" aria-label="Refresh data">&#x21bb; Refresh</button>
+  </div>
+</div>
+
+<div class="alert-zone" id="alert-zone" role="status" aria-live="polite"></div>
+
+<div id="error-banner" class="error-banner" role="alert"></div>
+
+<div class="kanban" id="kanban">
+  <div class="kanban-col" role="region" aria-label="Created: 0 issues" id="col-created">
+    <div class="col-header">Created <span class="col-count" id="count-created">(0)</span></div>
+  </div>
+  <div class="kanban-col" role="region" aria-label="Triaging: 0 issues" id="col-triaging">
+    <div class="col-header">Triaging <span class="col-count" id="count-triaging">(0)</span></div>
+  </div>
+  <div class="kanban-col" role="region" aria-label="Spec PR: 0 issues" id="col-spec">
+    <div class="col-header">Spec PR <span class="col-count" id="count-spec">(0)</span></div>
+  </div>
+  <div class="kanban-col" role="region" aria-label="Approved: 0 issues" id="col-approved">
+    <div class="col-header">Approved <span class="col-count" id="count-approved">(0)</span></div>
+  </div>
+  <div class="kanban-col" role="region" aria-label="Implementing: 0 issues" id="col-implementing">
+    <div class="col-header">Implementing <span class="col-count" id="count-implementing">(0)</span></div>
+  </div>
+  <div class="kanban-col" role="region" aria-label="Merged: 0 PRs" id="col-merged">
+    <div class="col-header">Merged <span class="col-count" id="count-merged">(0)</span></div>
+  </div>
+</div>
+
+<div class="carousel-dots" id="carousel-dots" role="tablist" aria-label="Pipeline columns">
+  <button class="dot active" data-col="0" role="tab" aria-selected="true" aria-label="Created column"></button>
+  <button class="dot" data-col="1" role="tab" aria-selected="false" aria-label="Triaging column"></button>
+  <button class="dot" data-col="2" role="tab" aria-selected="false" aria-label="Spec PR column"></button>
+  <button class="dot" data-col="3" role="tab" aria-selected="false" aria-label="Approved column"></button>
+  <button class="dot" data-col="4" role="tab" aria-selected="false" aria-label="Implementing column"></button>
+  <button class="dot" data-col="5" role="tab" aria-selected="false" aria-label="Merged column"></button>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var API = '/api/github';
+  var PIPELINE_REPO = 'atvirokodosprendimai/ai-pipeline-template';
+  var REFRESH_INTERVAL = 60000;
+  var STALE_HOURS_YELLOW = 20;
+  var STALE_HOURS_RED = 24;
+
+  var LABEL_TO_COLUMN = {
+    'needs-triage': 'created',
+    'copilot-triaging': 'triaging',
+    'copilot-revising': 'triaging',
+    'spec-ready': 'spec',
+    'approved-for-build': 'approved',
+    'goose-implementation': 'implementing'
+  };
+
+  var COLUMN_ORDER = ['created', 'triaging', 'spec', 'approved', 'implementing', 'merged'];
+  var COLUMN_LABELS = {
+    created: 'Created', triaging: 'Triaging', spec: 'Spec PR',
+    approved: 'Approved', implementing: 'Implementing', merged: 'Merged'
+  };
+
+  var lastFetchTime = null;
+  var refreshTimer = null;
+  var ageTimer = null;
+  var fetchInFlight = false;
+
+  // ── Helpers ──
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function(k) {
+        if (k === 'className') { node.className = attrs[k]; }
+        else if (k === 'textContent') { node.textContent = attrs[k]; }
+        else { node.setAttribute(k, attrs[k]); }
+      });
+    }
+    if (children) {
+      children.forEach(function(c) {
+        if (typeof c === 'string') { node.appendChild(document.createTextNode(c)); }
+        else if (c) { node.appendChild(c); }
+      });
+    }
+    return node;
+  }
+
+  function relativeTime(dateStr) {
+    var now = Date.now();
+    var then = new Date(dateStr).getTime();
+    var diffMs = now - then;
+    if (isNaN(diffMs) || diffMs < 0) return '--';
+    var mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    var hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    var days = Math.floor(hrs / 24);
+    return days + 'd ago';
+  }
+
+  function ageHours(dateStr) {
+    return (Date.now() - new Date(dateStr).getTime()) / 3600000;
+  }
+
+  function healthClass(hours) {
+    if (hours > STALE_HOURS_RED) return 'red';
+    if (hours > STALE_HOURS_YELLOW) return 'yellow';
+    return 'green';
+  }
+
+  function healthEmoji(hours) {
+    if (hours > STALE_HOURS_RED) return '\uD83D\uDD34';
+    if (hours > STALE_HOURS_YELLOW) return '\uD83D\uDFE1';
+    return '\uD83D\uDFE2';
+  }
+
+  function healthLabel(hours) {
+    if (hours > STALE_HOURS_RED) return 'Critical';
+    if (hours > STALE_HOURS_YELLOW) return 'Warning';
+    return 'Healthy';
+  }
+
+  function truncate(str, len) {
+    if (!str) return '';
+    return str.length > len ? str.substring(0, len) + '\u2026' : str;
+  }
+
+  function decodeBase64Content(b64) {
+    try {
+      return JSON.parse(atob(b64.replace(/\n/g, '')));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ── Fetch helpers ──
+
+  function fetchJSON(path) {
+    return fetch(API + path, {
+      headers: { 'Accept': 'application/vnd.github+json' },
+      cache: 'no-store'
+    }).then(function(res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    });
+  }
+
+  function fetchRepoContent(filePath) {
+    return fetchJSON('/' + PIPELINE_REPO + '/contents/' + filePath)
+      .then(function(data) {
+        return decodeBase64Content(data.content);
+      });
+  }
+
+  // ── Render ──
+
+  function renderIssueCard(issue, column) {
+    var hours = ageHours(issue.created_at);
+    var hc = healthClass(hours);
+    var isMerged = column === 'merged';
+
+    var cardClass = 'issue-card';
+    if (isMerged) {
+      cardClass += ' merged';
+    } else if (hc === 'yellow') {
+      cardClass += ' health-yellow';
+    } else if (hc === 'red') {
+      cardClass += ' health-red';
+    }
+
+    var numberLink = el('a', {
+      className: 'card-number',
+      href: issue.html_url,
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      textContent: '#' + issue.number
+    });
+
+    var titleDiv = el('div', {
+      className: 'card-title',
+      title: issue.title,
+      textContent: truncate(issue.title, 50)
+    });
+
+    var metaChildren;
+    if (isMerged) {
+      metaChildren = [
+        el('span', { textContent: '\u2713 ' + relativeTime(issue.merged_at || issue.created_at) })
+      ];
+    } else {
+      metaChildren = [
+        el('span', { className: 'health-dot', 'aria-hidden': 'true', textContent: healthEmoji(hours) }),
+        el('span', { className: 'sr-only', textContent: healthLabel(hours) }),
+        el('span', { textContent: relativeTime(issue.created_at) })
+      ];
+    }
+
+    var metaDiv = el('div', { className: 'card-meta' }, metaChildren);
+    var card = el('div', { className: cardClass }, [numberLink, titleDiv, metaDiv]);
+    return card;
+  }
+
+  function clearColumnCards() {
+    COLUMN_ORDER.forEach(function(col) {
+      var colEl = document.getElementById('col-' + col);
+      var children = Array.from(colEl.children);
+      children.forEach(function(child) {
+        if (!child.classList.contains('col-header')) {
+          colEl.removeChild(child);
+        }
+      });
+    });
+  }
+
+  function updateColumnCount(col, count) {
+    var suffix = col === 'merged' ? ' PRs' : ' issues';
+    document.getElementById('count-' + col).textContent = '(' + count + ')';
+    document.getElementById('col-' + col).setAttribute('aria-label',
+      COLUMN_LABELS[col] + ': ' + count + suffix);
+  }
+
+  function renderAlertZone(staleIssues) {
+    var zone = document.getElementById('alert-zone');
+    while (zone.firstChild) { zone.removeChild(zone.firstChild); }
+
+    if (staleIssues.length === 0) {
+      zone.classList.remove('visible');
+      return;
+    }
+
+    staleIssues.forEach(function(item) {
+      var hours = ageHours(item.created_at);
+      var isRed = hours > STALE_HOURS_RED;
+      var badge = el('a', {
+        className: 'alert-badge ' + (isRed ? 'red' : 'yellow'),
+        href: item.html_url,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        textContent: (isRed ? '\uD83D\uDD34' : '\uD83D\uDFE1') + ' #' + item.number + ' (' + Math.round(hours) + 'h)'
+      });
+      zone.appendChild(badge);
+    });
+    zone.classList.add('visible');
+  }
+
+  function renderEmptyState(col) {
+    var msg = col === 'created'
+      ? 'Pipeline is empty. Create an issue to get started.'
+      : 'No items';
+    var colEl = document.getElementById('col-' + col);
+    colEl.appendChild(el('div', { className: 'empty-state', textContent: msg }));
+  }
+
+  function showError(msg) {
+    var errEl = document.getElementById('error-banner');
+    errEl.textContent = msg;
+    errEl.classList.add('visible');
+  }
+
+  function hideError() {
+    document.getElementById('error-banner').classList.remove('visible');
+  }
+
+  // ── Banner updates ──
+
+  function updateBanner(loopState, costs, healthState) {
+    var pill = document.getElementById('stage-pill');
+    if (loopState && loopState.stage_name) {
+      pill.textContent = loopState.stage_name;
+    } else if (loopState && loopState.funnel_stage) {
+      pill.textContent = loopState.funnel_stage;
+    }
+
+    var runwayEl = document.getElementById('runway-text');
+    if (costs && costs.runway && costs.runway.months_remaining != null) {
+      runwayEl.textContent = costs.runway.months_remaining + 'mo runway';
+    }
+
+    var healEl = document.getElementById('heal-info');
+    if (healthState) {
+      var parts = [];
+      if (healthState.last_check) {
+        parts.push('Last healed: ' + relativeTime(healthState.last_check));
+      }
+      if (healthState.last_run_summary && healthState.last_run_summary.actions_taken != null) {
+        parts.push('fixed ' + healthState.last_run_summary.actions_taken + ' issues');
+      } else if (healthState.issues_healed_total != null) {
+        parts.push(healthState.issues_healed_total + ' total healed');
+      }
+      if (parts.length > 0) {
+        healEl.textContent = parts.join(', ');
+      }
+    }
+  }
+
+  // ── Refresh age ticker ──
+
+  function updateRefreshAge() {
+    var elAge = document.getElementById('refresh-age');
+    if (!lastFetchTime) {
+      elAge.textContent = 'Data refreshed --';
+      return;
+    }
+    var secs = Math.round((Date.now() - lastFetchTime) / 1000);
+    elAge.textContent = 'Data refreshed ' + secs + 's ago';
+  }
+
+  // ── Main data fetch ──
+
+  function fetchAll() {
+    if (fetchInFlight) return;
+    fetchInFlight = true;
+
+    var btn = document.getElementById('btn-refresh');
+    btn.classList.add('refreshing');
+    btn.disabled = true;
+
+    var issuesP = fetchJSON('/' + PIPELINE_REPO + '/issues?state=open&per_page=100').catch(function() { return null; });
+    var pullsP = fetchJSON('/' + PIPELINE_REPO + '/pulls?state=closed&per_page=10&sort=updated&direction=desc').catch(function() { return null; });
+    var loopP = fetchRepoContent('company/loop-state.json').catch(function() { return null; });
+    var costsP = fetchRepoContent('company/costs.json').catch(function() { return null; });
+    var healthP = fetchRepoContent('company/pipeline-health-state.json').catch(function() { return null; });
+
+    Promise.all([issuesP, pullsP, loopP, costsP, healthP]).then(function(results) {
+      var issues = results[0];
+      var pulls = results[1];
+      var loopState = results[2];
+      var costs = results[3];
+      var healthState = results[4];
+
+      hideError();
+
+      if (issues === null && pulls === null) {
+        showError('Failed to fetch pipeline data. Showing last known state.');
+        btn.classList.remove('refreshing');
+        btn.disabled = false;
+        fetchInFlight = false;
+        return;
+      }
+
+      lastFetchTime = Date.now();
+      updateRefreshAge();
+
+      // Classify issues into columns
+      var columns = {};
+      COLUMN_ORDER.forEach(function(c) { columns[c] = []; });
+
+      var staleIssues = [];
+      var totalPipelineIssues = 0;
+
+      if (issues && Array.isArray(issues)) {
+        issues.forEach(function(issue) {
+          if (issue.pull_request) return;
+
+          var labels = (issue.labels || []).map(function(l) { return l.name; });
+          var placed = false;
+
+          var labelPriority = [
+            'goose-implementation', 'approved-for-build', 'spec-ready',
+            'copilot-revising', 'copilot-triaging', 'needs-triage'
+          ];
+          for (var i = 0; i < labelPriority.length; i++) {
+            if (labels.indexOf(labelPriority[i]) !== -1) {
+              var col = LABEL_TO_COLUMN[labelPriority[i]];
+              columns[col].push(issue);
+              placed = true;
+              break;
+            }
+          }
+
+          if (!placed) return;
+
+          totalPipelineIssues++;
+
+          var hours = ageHours(issue.created_at);
+          if (hours > STALE_HOURS_YELLOW) {
+            staleIssues.push(issue);
+          }
+        });
+      }
+
+      // Merged PRs
+      if (pulls && Array.isArray(pulls)) {
+        pulls.forEach(function(pr) {
+          if (pr.merged_at) {
+            columns.merged.push({
+              number: pr.number,
+              title: pr.title,
+              html_url: pr.html_url,
+              created_at: pr.created_at,
+              merged_at: pr.merged_at
+            });
+          }
+        });
+      }
+
+      // Render
+      clearColumnCards();
+
+      COLUMN_ORDER.forEach(function(col) {
+        var items = columns[col];
+        updateColumnCount(col, items.length);
+        if (items.length === 0) {
+          renderEmptyState(col);
+        } else {
+          var colEl = document.getElementById('col-' + col);
+          items.forEach(function(item) {
+            colEl.appendChild(renderIssueCard(item, col));
+          });
+        }
+      });
+
+      // Alert zone
+      staleIssues.sort(function(a, b) { return ageHours(b.created_at) - ageHours(a.created_at); });
+      renderAlertZone(staleIssues);
+
+      // Banner
+      updateBanner(loopState, costs, healthState);
+
+      // Empty pipeline message
+      if (totalPipelineIssues === 0 && columns.merged.length === 0) {
+        var created = document.getElementById('col-created');
+        var existing = created.querySelector('.empty-state');
+        if (existing) {
+          existing.textContent = 'Pipeline is empty. Create an issue to get started.';
+        }
+      }
+
+      btn.classList.remove('refreshing');
+      btn.disabled = false;
+      fetchInFlight = false;
+    }).catch(function(err) {
+      showError('Error loading pipeline data: ' + err.message);
+      btn.classList.remove('refreshing');
+      btn.disabled = false;
+      fetchInFlight = false;
+    });
+  }
+
+  // ── Auto-refresh ──
+
+  function scheduleRefresh() {
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(function() {
+      if (!document.hidden) {
+        fetchAll();
+      }
+    }, REFRESH_INTERVAL);
+  }
+
+  // ── Carousel dots (mobile) ──
+
+  function setupCarousel() {
+    var kanban = document.getElementById('kanban');
+    var dots = document.querySelectorAll('.dot');
+
+    kanban.addEventListener('scroll', function() {
+      var firstCol = kanban.querySelector('.kanban-col');
+      if (!firstCol) return;
+      var colWidth = firstCol.offsetWidth;
+      var index = Math.round(kanban.scrollLeft / colWidth);
+      dots.forEach(function(d, i) {
+        var isActive = i === index;
+        d.classList.toggle('active', isActive);
+        d.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+    });
+
+    dots.forEach(function(d) {
+      d.addEventListener('click', function() {
+        var idx = parseInt(d.getAttribute('data-col'), 10);
+        var firstCol = kanban.querySelector('.kanban-col');
+        if (!firstCol) return;
+        kanban.scrollTo({ left: idx * firstCol.offsetWidth, behavior: 'smooth' });
+      });
+    });
+  }
+
+  // ── Init ──
+
+  document.getElementById('btn-refresh').addEventListener('click', fetchAll);
+  ageTimer = setInterval(updateRefreshAge, 1000);
+  setupCarousel();
+  fetchAll();
+  scheduleRefresh();
+
+})();
+</script>
+</body>
+</html>
