@@ -471,12 +471,24 @@ a:hover { text-decoration: underline; }
 
   function updateRefreshAge() {
     var elAge = document.getElementById('refresh-age');
+    var errEl = document.getElementById('error-banner');
     if (!lastFetchTime) {
       elAge.textContent = 'Data refreshed --';
       return;
     }
     var secs = Math.round((Date.now() - lastFetchTime) / 1000);
+    var hrs = secs / 3600;
     elAge.textContent = 'Data refreshed ' + secs + 's ago';
+
+    // Stale data warning when cache is >4h old (PRD Feature 9 criterion 3)
+    if (hrs > 4 && !errEl.classList.contains('visible')) {
+      var staleHrs = Math.round(hrs * 10) / 10;
+      errEl.textContent = 'Data stale. Last sync: ' + staleHrs + 'h ago. Try refreshing.';
+      errEl.style.background = 'rgba(210,153,34,0.1)';
+      errEl.style.borderColor = 'var(--yellow)';
+      errEl.style.color = 'var(--yellow)';
+      errEl.classList.add('visible');
+    }
   }
 
   // ── Main data fetch ──
