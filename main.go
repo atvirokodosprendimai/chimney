@@ -569,7 +569,7 @@ func handleGitHubProxy(w http.ResponseWriter, r *http.Request) {
 	allowedParams := map[string]bool{
 		"state": true, "per_page": true, "page": true, "sort": true,
 		"direction": true, "since": true, "until": true, "status": true,
-		"sha": true, "ref": true, "path": true,
+		"sha": true, "ref": true, "path": true, "workflow": true,
 	}
 	filtered := make([]string, 0, len(r.URL.Query()))
 	for k, vs := range r.URL.Query() {
